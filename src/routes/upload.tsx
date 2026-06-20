@@ -55,7 +55,7 @@ function UploadPage() {
   const [progress, setProgress] = useState(0);
   const [file, setFile] = useState<UploadedFile | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisBlock | null>(null);
-  const [chart, setChart] = useState<Report["payload"]["chart"] | null>(null);
+  const [chart, setChart] = useState<NonNullable<Report["payload"]["chart"]> | null>(null);
 
   const handleFile = useCallback(
     async (input: File) => {
@@ -121,7 +121,7 @@ function UploadPage() {
       };
 
       let result: AnalysisBlock;
-      let chartBlock: Report["payload"]["chart"] = null;
+      let chartBlock: NonNullable<Report["payload"]["chart"]> | null = null;
 
       if (hasKey && type === "csv") {
         try {
