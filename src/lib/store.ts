@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import type { DemoDataset } from "./demo-data";
 import { dbAddFile, dbAddInsight, dbAddMessage, dbAddReport, dbBumpStat, dbClearAll, dbDeleteFile, dbLoadAll } from "./neon";
 import { demoAnalysis, detectDemoKind } from "./demo-responses";
-import type { AnalysisBlock } from "./claude";
+import type { AnalysisBlock } from "./groq";
 
 export type UploadedFile = {
   id: string;

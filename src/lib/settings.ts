@@ -5,8 +5,8 @@ export type ChartType = "bar" | "line" | "pie" | "area";
 export type Language = "en" | "hi";
 
 export type SettingsState = {
-  claudeApiKey: string;
-  claudeModel: string;
+  groqApiKey: string;
+  groqModel: string;
   neonConnectionString: string;
   cloudinaryCloudName: string;
   cloudinaryUploadPreset: string;
@@ -18,8 +18,8 @@ export type SettingsState = {
 };
 
 const defaults = {
-  claudeApiKey: "",
-  claudeModel: "claude-sonnet-4-5",
+  groqApiKey: "",
+  groqModel: "llama-3.3-70b-versatile",
   neonConnectionString: "",
   cloudinaryCloudName: "",
   cloudinaryUploadPreset: "",
@@ -28,6 +28,16 @@ const defaults = {
   language: "en" as Language,
 };
 
+const GROQ_MODELS = new Set([
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
+  "mixtral-8x7b-32768",
+]);
+
+function normalizeGroqModel(model: string): string {
+  return GROQ_MODELS.has(model) ? model : defaults.groqModel;
+}
+
 export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
@@ -35,6 +45,29 @@ export const useSettings = create<SettingsState>()(
       set: (patch) => set(patch),
       reset: () => set(defaults),
     }),
-    { name: "bizlens-settings" },
+    {
+      name: "bizlens-settings",
+      version: 3,
+      migrate: (persisted, version) => {
+        const s = persisted as Record<string, unknown>;
+        const legacyKey =
+          (s.groqApiKey as string) ||
+          (s.geminiApiKey as string) ||
+          (s.claudeApiKey as string) ||
+          "";
+        const legacyModel =
+          (s.groqModel as string) ||
+          (s.geminiModel as string) ||
+          (s.claudeModel as string) ||
+          "";
+
+        return {
+          ...defaults,
+          ...s,
+          groqApiKey: legacyKey,
+          groqModel: normalizeGroqModel(legacyModel),
+        };
+      },
+    },
   ),
 );

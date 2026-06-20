@@ -23,11 +23,12 @@ import { useSettings } from "@/lib/settings";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import {
   buildFileContext,
-  callClaude,
+  callGroq,
+  hasGroqKey,
   parseAnalysisBlock,
   parseChartBlocks,
   type AnalysisBlock,
-} from "@/lib/claude";
+} from "@/lib/groq";
 import { demoAnalysis, detectDemoKind } from "@/lib/demo-responses";
 import { InlineChart } from "./chat";
 
@@ -48,7 +49,7 @@ function UploadPage() {
   const addFile = useStore((s) => s.addFile);
   const addInsight = useStore((s) => s.addInsight);
   const addReport = useStore((s) => s.addReport);
-  const hasKey = useSettings((s) => !!s.claudeApiKey);
+  const hasKey = hasGroqKey();
   const hasCloud = useSettings((s) => !!s.cloudinaryCloudName && !!s.cloudinaryUploadPreset);
 
   const [step, setStep] = useState<Step>("idle");
@@ -125,7 +126,7 @@ function UploadPage() {
 
       if (hasKey && type === "csv") {
         try {
-          const reply = await callClaude(
+          const reply = await callGroq(
             [
               {
                 role: "user",
@@ -135,11 +136,11 @@ function UploadPage() {
           );
           const parsed = parseAnalysisBlock(reply);
           if (parsed) result = parsed;
-          else throw new Error("No analysis block in Claude response");
+          else throw new Error("No analysis block in Groq response");
           const charts = parseChartBlocks(reply);
           if (charts[0]) chartBlock = charts[0];
         } catch (e) {
-          toast.error(e instanceof Error ? e.message : "Claude analysis failed — using fallback");
+          toast.error(e instanceof Error ? e.message : "Groq analysis failed — using fallback");
           result = demoAnalysis(detectDemoKind(newFile), newFile);
         }
       } else {
@@ -209,7 +210,7 @@ function UploadPage() {
             BizLens AI reads it, finds patterns, and writes the insights.
             {!hasKey && (
               <span className="ml-1 text-warning">
-                · Add a Claude key in Settings for live analysis (demo analysis runs without it).
+                · Add a Groq key in Settings for live analysis (demo analysis runs without it).
               </span>
             )}
           </p>
@@ -281,7 +282,7 @@ function UploadPage() {
               <ProgressStep
                 active={step === "analyzing"}
                 done={false}
-                label={hasKey ? "Asking Claude for insights..." : "Generating demo insights..."}
+                label={hasKey ? "Asking Groq for insights..." : "Generating demo insights..."}
                 icon={<Sparkles className="h-4 w-4" />}
                 spin={step === "analyzing"}
                 last

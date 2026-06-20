@@ -24,14 +24,14 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/app/AppShell";
 import { FileTypeIcon, relativeTime } from "@/components/app/FileBits";
 import { useStore } from "@/lib/store";
-import { useSettings } from "@/lib/settings";
 import {
   type ChartBlock,
   buildFileContext,
-  callClaude,
+  callGroq,
+  hasGroqKey,
   parseChartBlocks,
   stripBlocks,
-} from "@/lib/claude";
+} from "@/lib/groq";
 import { SUGGESTED_QUESTIONS, demoAnswer, detectDemoKind } from "@/lib/demo-responses";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +53,7 @@ function ChatPage() {
   const files = useStore((s) => s.files);
   const allMessages = useStore((s) => s.messages);
   const addMessage = useStore((s) => s.addMessage);
-  const hasKey = useSettings((s) => !!s.claudeApiKey);
+  const hasKey = hasGroqKey();
 
   const [activeFileId, setActiveFileId] = useState<string | null>(files[0]?.id ?? null);
   useEffect(() => {
@@ -100,7 +100,7 @@ function ChatPage() {
       if (hasKey) {
         const turns = [...messages, userMsg].map((m) => ({ role: m.role, content: m.content }));
         const context = `\n\nActive dataset context:\n${buildFileContext(activeFile)}`;
-        reply = await callClaude(turns, context);
+        reply = await callGroq(turns, context);
       } else {
         // demo mode
         await new Promise((r) => setTimeout(r, 600));
@@ -184,7 +184,7 @@ function ChatPage() {
                     {activeFile?.name ?? "Pick a file"}
                   </div>
                   <div className="text-[11px] text-muted-foreground">
-                    {hasKey ? "Live AI · Claude" : "Demo mode · add a key in Settings for live AI"}
+                    {hasKey ? "Live AI · Groq" : "Demo mode · add a key in Settings for live AI"}
                   </div>
                 </div>
               </div>

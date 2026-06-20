@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/app/AppShell";
 import { useSettings } from "@/lib/settings";
 import { useStore } from "@/lib/store";
-import { testClaudeKey } from "@/lib/claude";
+import { testGroqKey } from "@/lib/groq";
 import { initSchema, testNeonConnection } from "@/lib/neon";
 import { cn } from "@/lib/utils";
 
@@ -59,32 +59,34 @@ function SettingsPage() {
 /* ---------------- AI ---------------- */
 
 function AISection() {
-  const { claudeApiKey, claudeModel, set } = useSettings();
+  const { groqApiKey, groqModel, set } = useSettings();
+  const envKey = import.meta.env.VITE_GROQ_API_KEY ?? "";
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function onTest() {
-    if (!claudeApiKey) {
+    const key = groqApiKey || envKey;
+    if (!key) {
       toast.error("Add a key first");
       return;
     }
     setBusy(true);
-    const r = await testClaudeKey(claudeApiKey, claudeModel);
+    const r = await testGroqKey(key, groqModel);
     setBusy(false);
     r.ok ? toast.success(r.message) : toast.error(r.message);
   }
 
   return (
-    <SectionCard icon={<Wand2 className="h-4 w-4 text-white" />} title="AI Configuration" subtitle="Claude API for chat and analysis">
-      <Field label="Anthropic API key">
+    <SectionCard icon={<Wand2 className="h-4 w-4 text-white" />} title="AI Configuration" subtitle="Groq API for chat and analysis">
+      <Field label="Groq API Key">
         <div className="flex gap-2">
           <div className="relative flex-1">
             <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type={show ? "text" : "password"}
-              value={claudeApiKey}
-              onChange={(e) => set({ claudeApiKey: e.target.value })}
-              placeholder="sk-ant-…"
+              value={groqApiKey}
+              onChange={(e) => set({ groqApiKey: e.target.value })}
+              placeholder={envKey ? "Loaded from VITE_GROQ_API_KEY" : "gsk_…"}
               className="w-full rounded-lg border border-border bg-surface px-9 py-2 text-sm font-mono outline-none focus:border-primary"
             />
             <button
@@ -102,16 +104,20 @@ function AISection() {
       </Field>
       <Field label="Model">
         <select
-          value={claudeModel}
-          onChange={(e) => set({ claudeModel: e.target.value })}
+          value={groqModel}
+          onChange={(e) => set({ groqModel: e.target.value })}
           className={inputCls}
         >
-          <option value="claude-sonnet-4-5">claude-sonnet-4-5 (recommended)</option>
-          <option value="claude-opus-4-1">claude-opus-4-1</option>
-          <option value="claude-haiku-4-5">claude-haiku-4-5 (faster)</option>
-          <option value="claude-3-7-sonnet-latest">claude-3-7-sonnet-latest</option>
+          <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (recommended)</option>
+          <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+          <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
         </select>
       </Field>
+      {envKey && !groqApiKey && (
+        <p className="text-xs text-muted-foreground">
+          Using API key from <span className="font-mono">VITE_GROQ_API_KEY</span> environment variable.
+        </p>
+      )}
     </SectionCard>
   );
 }

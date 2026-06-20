@@ -1,5 +1,5 @@
 import type { UploadedFile } from "./store";
-import type { AnalysisBlock } from "./claude";
+import type { AnalysisBlock } from "./groq";
 
 export type DemoKind = "coaching" | "restaurant" | "default";
 
@@ -130,7 +130,7 @@ const RESTAURANT_ANSWERS: Array<{ match: RegExp; reply: string }> = [
   },
 ];
 
-const DEFAULT_ANSWER = `I've got the basics from your file. Once you add a Claude API key in **Settings**, I can dig in with full numeric analysis. In the meantime, try a demo dataset from the dashboard to see how the chat works end-to-end.`;
+const DEFAULT_ANSWER = `I've got the basics from your file. Once you add a Groq API key in **Settings**, I can dig in with full numeric analysis. In the meantime, try a demo dataset from the dashboard to see how the chat works end-to-end.`;
 
 export function demoAnswer(kind: DemoKind, question: string): string {
   const bank = kind === "coaching" ? COACHING_ANSWERS : kind === "restaurant" ? RESTAURANT_ANSWERS : [];
@@ -189,13 +189,13 @@ export function demoAnalysis(kind: DemoKind, file: UploadedFile): AnalysisBlock 
   }
   return {
     summary: `${file.name} loaded with ${file.rowCount ?? 0} rows.`,
-    insights: ["Add a Claude API key in Settings for full AI analysis."],
+    insights: ["Add a Groq API key in Settings for full AI analysis."],
     metrics: [
       { label: "Rows", value: String(file.rowCount ?? 0) },
       { label: "Columns", value: String(file.columnNames?.length ?? 0) },
       { label: "Source", value: file.source ?? "upload" },
       { label: "Status", value: "Loaded" },
     ],
-    recommendations: ["Open Settings and paste your Claude key to unlock analysis."],
+    recommendations: ["Open Settings and paste your Groq key to unlock analysis."],
   };
 }

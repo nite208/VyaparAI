@@ -47,51 +47,79 @@ Charts:
 
 export type ChatTurn = { role: "user" | "assistant"; content: string };
 
-export async function callClaude(turns: ChatTurn[], extraSystem?: string): Promise<string> {
-  const { claudeApiKey, claudeModel, language } = useSettings.getState();
-  if (!claudeApiKey) throw new Error("No Claude API key. Open Settings to add one.");
-  const base = language === "hi" ? SYSTEM_PROMPT_HI : SYSTEM_PROMPT_EN;
-  const system = extraSystem ? `${base}\n\n${extraSystem}` : base;
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const DEFAULT_MODEL = "llama-3.3-70b-versatile";
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+export function getGroqApiKey(): string {
+  const { groqApiKey } = useSettings.getState();
+  return groqApiKey || import.meta.env.VITE_GROQ_API_KEY || "";
+}
+
+export function hasGroqKey(): boolean {
+  return !!getGroqApiKey();
+}
+
+function resolveGroqModel(model: string | undefined): string {
+  return model?.trim() || DEFAULT_MODEL;
+}
+
+type GroqMessage = { role: "system" | "user" | "assistant"; content: string };
+
+type GroqResponse = {
+  choices?: Array<{ message?: { content?: string } }>;
+};
+
+function extractGroqText(json: GroqResponse): string {
+  return json.choices?.[0]?.message?.content ?? "";
+}
+
+function buildMessages(system: string, turns: ChatTurn[]): GroqMessage[] {
+  return [
+    { role: "system", content: system },
+    ...turns.map((t) => ({ role: t.role, content: t.content })),
+  ];
+}
+
+async function groqRequest(apiKey: string, model: string, messages: GroqMessage[], maxTokens: number): Promise<Response> {
+  return fetch(GROQ_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": claudeApiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: claudeModel || "claude-sonnet-4-5",
-      max_tokens: 2048,
-      system,
-      messages: turns,
+      model: resolveGroqModel(model),
+      messages,
+      max_tokens: maxTokens,
     }),
   });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Claude ${res.status}: ${t.slice(0, 240)}`);
-  }
-  const json = (await res.json()) as { content?: Array<{ text?: string }> };
-  return json.content?.[0]?.text ?? "";
 }
 
-export async function testClaudeKey(key: string, model: string): Promise<{ ok: boolean; message: string }> {
+export async function callGroq(turns: ChatTurn[], extraSystem?: string): Promise<string> {
+  const apiKey = getGroqApiKey();
+  if (!apiKey) throw new Error("No Groq API key. Open Settings to add one.");
+
+  const { groqModel, language } = useSettings.getState();
+  const base = language === "hi" ? SYSTEM_PROMPT_HI : SYSTEM_PROMPT_EN;
+  const system = extraSystem ? `${base}\n\n${extraSystem}` : base;
+
+  const res = await groqRequest(apiKey, groqModel, buildMessages(system, turns), 1500);
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Groq ${res.status}: ${t.slice(0, 240)}`);
+  }
+  const json = (await res.json()) as GroqResponse;
+  return extractGroqText(json);
+}
+
+export async function testGroqKey(key: string, model: string): Promise<{ ok: boolean; message: string }> {
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model: model || "claude-sonnet-4-5",
-        max_tokens: 16,
-        messages: [{ role: "user", content: "ping" }],
-      }),
-    });
+    const res = await groqRequest(
+      key,
+      model,
+      [{ role: "user", content: "ping" }],
+      16,
+    );
     if (res.ok) return { ok: true, message: "Key valid" };
     const t = await res.text();
     return { ok: false, message: `${res.status}: ${t.slice(0, 160)}` };
