@@ -8,28 +8,28 @@ import {
   Brain,
   CheckCircle2,
   CloudUpload,
-  FileSpreadsheet,
+  Loader2,
   MessageSquare,
   FileText,
-  Loader2,
   Sparkles,
+  Target,
+  Lightbulb,
+  Image as ImageIcon,
 } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { AppShell } from "@/components/app/AppShell";
 import { FileTypeIcon, formatBytes } from "@/components/app/FileBits";
-import { useStore, type UploadedFile } from "@/lib/store";
-import { formatINR } from "@/lib/demo-data";
+import { useStore, type UploadedFile, type Report } from "@/lib/store";
+import { useSettings } from "@/lib/settings";
+import { uploadToCloudinary } from "@/lib/cloudinary";
+import {
+  buildFileContext,
+  callClaude,
+  parseAnalysisBlock,
+  parseChartBlocks,
+  type AnalysisBlock,
+} from "@/lib/claude";
+import { demoAnalysis, detectDemoKind } from "@/lib/demo-responses";
+import { InlineChart } from "./chat";
 
 export const Route = createFileRoute("/upload")({
   head: () => ({
@@ -43,21 +43,19 @@ export const Route = createFileRoute("/upload")({
 
 type Step = "idle" | "uploading" | "reading" | "analyzing" | "done";
 
-type Analysis = {
-  summary: string[];
-  topCategoryChart?: { name: string; value: number }[];
-  trendChart?: { name: string; value: number }[];
-};
-
 function UploadPage() {
   const navigate = useNavigate();
   const addFile = useStore((s) => s.addFile);
   const addInsight = useStore((s) => s.addInsight);
+  const addReport = useStore((s) => s.addReport);
+  const hasKey = useSettings((s) => !!s.claudeApiKey);
+  const hasCloud = useSettings((s) => !!s.cloudinaryCloudName && !!s.cloudinaryUploadPreset);
 
   const [step, setStep] = useState<Step>("idle");
   const [progress, setProgress] = useState(0);
   const [file, setFile] = useState<UploadedFile | null>(null);
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisBlock | null>(null);
+  const [chart, setChart] = useState<Report["payload"]["chart"] | null>(null);
 
   const handleFile = useCallback(
     async (input: File) => {
@@ -67,14 +65,31 @@ function UploadPage() {
 
       setStep("uploading");
       setProgress(0);
-      // simulate upload tick
-      for (let p = 0; p <= 100; p += 10) {
-        await wait(45);
-        setProgress(p);
+
+      // Cloudinary (if configured)
+      let cloudinaryUrl: string | undefined;
+      if (hasCloud) {
+        try {
+          const up = uploadToCloudinary(input);
+          // fake progress while upload runs
+          for (let p = 0; p <= 60; p += 12) {
+            await wait(80);
+            setProgress(p);
+          }
+          cloudinaryUrl = (await up) ?? undefined;
+          setProgress(80);
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Cloudinary upload failed");
+        }
+      } else {
+        for (let p = 0; p <= 100; p += 10) {
+          await wait(45);
+          setProgress(p);
+        }
       }
 
       setStep("reading");
-      await wait(700);
+      await wait(450);
 
       let rows: (string | number)[][] = [];
       let columns: string[] = [];
@@ -83,14 +98,13 @@ function UploadPage() {
         const parsed = Papa.parse<string[]>(text.trim(), { skipEmptyLines: true });
         if (parsed.data.length) {
           columns = parsed.data[0];
-          rows = parsed.data.slice(1).map((r) =>
-            r.map((c) => (isFiniteNumber(c) ? Number(c) : c)),
-          );
+          rows = parsed.data
+            .slice(1)
+            .map((r) => r.map((c) => (isFiniteNumber(c) ? Number(c) : c)));
         }
       }
 
       setStep("analyzing");
-      await wait(900);
 
       const newFile: UploadedFile = {
         id: `up-${Date.now()}`,
@@ -103,13 +117,42 @@ function UploadPage() {
         columnNames: columns,
         rows,
         source: "upload",
+        cloudinaryUrl,
       };
 
-      const a = buildAnalysis(newFile);
+      let result: AnalysisBlock;
+      let chartBlock: Report["payload"]["chart"] = null;
+
+      if (hasKey && type === "csv") {
+        try {
+          const reply = await callClaude(
+            [
+              {
+                role: "user",
+                content: `Analyze this dataset and return only an \`\`\`analysis JSON block. Include one \`\`\`chartdata block.\n\n${buildFileContext(newFile)}`,
+              },
+            ],
+          );
+          const parsed = parseAnalysisBlock(reply);
+          if (parsed) result = parsed;
+          else throw new Error("No analysis block in Claude response");
+          const charts = parseChartBlocks(reply);
+          if (charts[0]) chartBlock = charts[0];
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Claude analysis failed — using fallback");
+          result = demoAnalysis(detectDemoKind(newFile), newFile);
+        }
+      } else {
+        await wait(700);
+        result = demoAnalysis(detectDemoKind(newFile), newFile);
+      }
+
       setFile(newFile);
-      setAnalysis(a);
+      setAnalysis(result);
+      setChart(chartBlock);
       addFile(newFile);
-      a.summary.slice(0, 2).forEach((content, idx) =>
+
+      result.insights.slice(0, 2).forEach((content, idx) =>
         addInsight({
           id: `${newFile.id}-i-${idx}`,
           fileId: newFile.id,
@@ -118,10 +161,21 @@ function UploadPage() {
           createdAt: Date.now(),
         }),
       );
+
+      const report: Report = {
+        id: `${newFile.id}-r`,
+        fileId: newFile.id,
+        fileName: newFile.name,
+        title: newFile.name.replace(/\.[^.]+$/, ""),
+        payload: { ...result, chart: chartBlock ?? undefined },
+        createdAt: Date.now(),
+      };
+      addReport(report);
+
       setStep("done");
       toast.success("Analysis ready", { description: newFile.name });
     },
-    [addFile, addInsight],
+    [addFile, addInsight, addReport, hasCloud, hasKey],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -141,21 +195,23 @@ function UploadPage() {
     setProgress(0);
     setFile(null);
     setAnalysis(null);
+    setChart(null);
   };
 
   return (
     <AppShell>
       <div className="mx-auto max-w-4xl">
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
-        >
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
           <h2 className="text-2xl font-semibold tracking-tight">
             Upload your <span className="text-gradient">business data</span>
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             BizLens AI reads it, finds patterns, and writes the insights.
+            {!hasKey && (
+              <span className="ml-1 text-warning">
+                · Add a Claude key in Settings for live analysis (demo analysis runs without it).
+              </span>
+            )}
           </p>
         </motion.div>
 
@@ -211,21 +267,21 @@ function UploadPage() {
               <ProgressStep
                 active={step === "uploading"}
                 done={step !== "uploading"}
-                label="Uploading file..."
+                label={hasCloud ? "Uploading to Cloudinary..." : "Reading file..."}
                 icon={<CloudUpload className="h-4 w-4" />}
                 progress={progress}
               />
               <ProgressStep
                 active={step === "reading"}
                 done={step === "analyzing"}
-                label="Reading your data..."
+                label="Parsing your data..."
                 icon={<Brain className="h-4 w-4" />}
                 spin={step === "reading"}
               />
               <ProgressStep
                 active={step === "analyzing"}
                 done={false}
-                label="Generating insights..."
+                label={hasKey ? "Asking Claude for insights..." : "Generating demo insights..."}
                 icon={<Sparkles className="h-4 w-4" />}
                 spin={step === "analyzing"}
                 last
@@ -255,12 +311,19 @@ function UploadPage() {
                       )}
                       {file.columnNames?.length ? (
                         <span>
-                          <b className="text-foreground font-mono-num">
-                            {file.columnNames.length}
-                          </b>{" "}
-                          columns
+                          <b className="text-foreground font-mono-num">{file.columnNames.length}</b> columns
                         </span>
                       ) : null}
+                      {file.cloudinaryUrl && (
+                        <a
+                          href={file.cloudinaryUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-primary-glow hover:underline"
+                        >
+                          <ImageIcon className="h-3 w-3" /> View on Cloudinary
+                        </a>
+                      )}
                     </div>
                   </div>
                   <button
@@ -272,39 +335,56 @@ function UploadPage() {
                 </div>
               </div>
 
-              {/* AI Summary */}
+              {/* Analysis Card */}
               <div className="card-surface p-5">
                 <div className="mb-3 flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-accent" />
-                  <h3 className="text-sm font-semibold">AI Summary</h3>
+                  <h3 className="text-sm font-semibold">Executive Summary</h3>
                 </div>
-                <ul className="space-y-2">
-                  {analysis.summary.map((line, i) => (
-                    <motion.li
-                      key={i}
-                      initial={{ opacity: 0, x: -6 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.08 }}
-                      className="flex gap-3 rounded-lg border-l-2 border-primary bg-surface px-3 py-2 text-sm"
-                    >
-                      <span className="text-primary-glow">•</span>
-                      <span className="text-foreground/90">{line}</span>
-                    </motion.li>
+                <p className="text-sm leading-relaxed text-foreground/90">{analysis.summary}</p>
+
+                <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                  {analysis.metrics.map((m, i) => (
+                    <div key={i} className="rounded-lg border border-border bg-surface p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        {m.label}
+                      </div>
+                      <div className="mt-0.5 font-mono-num text-lg font-semibold">{m.value}</div>
+                    </div>
                   ))}
-                </ul>
+                </div>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <Lightbulb className="h-3.5 w-3.5 text-accent" /> Insights
+                    </div>
+                    <ul className="space-y-1.5">
+                      {analysis.insights.map((it, i) => (
+                        <li key={i} className="flex gap-2 rounded-lg border-l-2 border-primary bg-surface px-3 py-1.5 text-sm">
+                          <span className="text-primary-glow">•</span>
+                          <span>{it}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <Target className="h-3.5 w-3.5 text-accent" /> Recommendations
+                    </div>
+                    <ul className="space-y-1.5">
+                      {analysis.recommendations.map((it, i) => (
+                        <li key={i} className="flex gap-2 rounded-lg bg-[image:var(--gradient-brand-soft)] px-3 py-1.5 text-sm">
+                          <span className="text-primary-glow">→</span>
+                          <span>{it}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               </div>
 
-              {/* Charts */}
-              {(analysis.topCategoryChart || analysis.trendChart) && (
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  {analysis.topCategoryChart && (
-                    <ChartCard title="Top items by total" type="bar" data={analysis.topCategoryChart} />
-                  )}
-                  {analysis.trendChart && (
-                    <ChartCard title="Trend over time" type="line" data={analysis.trendChart} />
-                  )}
-                </div>
-              )}
+              {chart && <InlineChart chart={chart} />}
 
               {/* CTAs */}
               <div className="flex flex-wrap gap-2 pt-2">
@@ -318,7 +398,7 @@ function UploadPage() {
                   onClick={() => navigate({ to: "/reports" })}
                   className="inline-flex items-center gap-2 rounded-full border border-border-strong bg-card px-5 py-2.5 text-sm font-medium hover:border-primary"
                 >
-                  <FileText className="h-4 w-4" /> Generate Report
+                  <FileText className="h-4 w-4" /> View Report
                 </button>
               </div>
             </motion.div>
@@ -339,68 +419,6 @@ function isFiniteNumber(s: string) {
   if (s === "" || s == null) return false;
   return !isNaN(Number(s)) && isFinite(Number(s));
 }
-
-function buildAnalysis(f: UploadedFile): Analysis {
-  if (f.type !== "csv" || !f.rows?.length || !f.columnNames?.length) {
-    return {
-      summary: [
-        `${f.name} uploaded successfully (${formatBytes(f.size)}).`,
-        "Open chat to ask questions about this file.",
-      ],
-    };
-  }
-
-  const cols = f.columnNames;
-  // find numeric + label columns
-  const numericIdx = cols.findIndex((_, i) =>
-    f.rows!.slice(0, 5).every((r) => typeof r[i] === "number"),
-  );
-  const labelIdx = cols.findIndex((_, i) =>
-    f.rows!.slice(0, 5).every((r) => typeof r[i] === "string"),
-  );
-
-  const summary: string[] = [
-    `Found ${f.rows.length} rows across ${cols.length} columns: ${cols.slice(0, 4).join(", ")}${cols.length > 4 ? "…" : ""}.`,
-  ];
-
-  let topCategoryChart: Analysis["topCategoryChart"];
-  let trendChart: Analysis["trendChart"];
-
-  if (numericIdx >= 0 && labelIdx >= 0) {
-    const sums = new Map<string, number>();
-    for (const r of f.rows) {
-      const k = String(r[labelIdx]);
-      sums.set(k, (sums.get(k) ?? 0) + (Number(r[numericIdx]) || 0));
-    }
-    const sorted = [...sums.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
-    topCategoryChart = sorted.map(([name, value]) => ({ name, value }));
-    const [topName, topVal] = sorted[0] ?? ["", 0];
-    summary.push(
-      `Top ${cols[labelIdx]}: ${topName} contributes ${formatINR(topVal)} across ${cols[numericIdx]}.`,
-    );
-
-    // trend if there's a date-ish column
-    const dateIdx = cols.findIndex((c) => /date|month|day/i.test(c));
-    if (dateIdx >= 0) {
-      const trend = new Map<string, number>();
-      for (const r of f.rows) {
-        const k = String(r[dateIdx]);
-        trend.set(k, (trend.get(k) ?? 0) + (Number(r[numericIdx]) || 0));
-      }
-      trendChart = [...trend.entries()].slice(0, 12).map(([name, value]) => ({ name, value }));
-      summary.push(
-        `Movement spans ${trend.size} ${cols[dateIdx].toLowerCase()} buckets — open chat to dig into the swings.`,
-      );
-    }
-  } else {
-    summary.push("Data looks mostly textual — start chatting to extract structured insights.");
-  }
-
-  summary.push("Click Start Chatting to ask BizLens AI specific questions about this data.");
-  return { summary, topCategoryChart, trendChart };
-}
-
-/* ---------- subcomponents ---------- */
 
 function ProgressStep({
   active,
@@ -457,80 +475,6 @@ function ProgressStep({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function ChartCard({
-  title,
-  type,
-  data,
-}: {
-  title: string;
-  type: "bar" | "line";
-  data: { name: string; value: number }[];
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="card-surface p-5"
-    >
-      <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        {title}
-      </h4>
-      <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          {type === "bar" ? (
-            <BarChart data={data} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
-              <CartesianGrid stroke="oklch(0.27 0.018 270)" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="name"
-                tick={{ fill: "oklch(0.66 0.022 268)", fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis tick={{ fill: "oklch(0.66 0.022 268)", fontSize: 11 }} tickLine={false} axisLine={false} />
-              <Tooltip content={<TooltipBox />} cursor={{ fill: "oklch(0.58 0.22 287 / 0.08)" }} />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]} animationDuration={700}>
-                {data.map((_, i) => (
-                  <Cell key={i} fill={i === 0 ? "oklch(0.58 0.22 287)" : "oklch(0.58 0.22 287 / 0.55)"} />
-                ))}
-              </Bar>
-            </BarChart>
-          ) : (
-            <LineChart data={data} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
-              <CartesianGrid stroke="oklch(0.27 0.018 270)" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="name"
-                tick={{ fill: "oklch(0.66 0.022 268)", fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis tick={{ fill: "oklch(0.66 0.022 268)", fontSize: 11 }} tickLine={false} axisLine={false} />
-              <Tooltip content={<TooltipBox />} cursor={{ stroke: "oklch(0.58 0.22 287 / 0.3)" }} />
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke="oklch(0.78 0.16 175)"
-                strokeWidth={2.5}
-                dot={{ r: 3, fill: "oklch(0.78 0.16 175)" }}
-                animationDuration={900}
-              />
-            </LineChart>
-          )}
-        </ResponsiveContainer>
-      </div>
-    </motion.div>
-  );
-}
-
-function TooltipBox({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="glass rounded-lg px-3 py-2 text-xs shadow-xl">
-      <div className="font-medium text-foreground">{label}</div>
-      <div className="font-mono-num text-primary-glow">{payload[0].value.toLocaleString("en-IN")}</div>
     </div>
   );
 }
