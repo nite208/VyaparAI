@@ -212,7 +212,44 @@
 ::-webkit-scrollbar-thumb:hover { background: oklch(0.35 0.024 270); background-clip: padding-box; }
 
 /* ---------- Print ---------- */
+.print-footer {
+  display: none;
+}
 @media print {
-  body { background: white !important; color: black !important; }
-  .no-print, aside, header[data-topbar] { display: none !important; }
+  @page { margin: 14mm 12mm 20mm; }
+  html, body {
+    background: #ffffff !important;
+    color: #111111 !important;
+    background-image: none !important;
+  }
+  .no-print, aside, header[data-topbar], button, .no-print * {
+    display: none !important;
+  }
+  main { padding: 0 !important; }
+  .card-surface {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+    color: #111111 !important;
+    page-break-inside: avoid;
+  }
+  .text-gradient {
+    background: none !important;
+    -webkit-text-fill-color: #111111 !important;
+    color: #111111 !important;
+  }
+  .text-muted-foreground { color: #4b5563 !important; }
+  .text-foreground { color: #111111 !important; }
+  .print-footer {
+    display: block;
+    position: fixed;
+    bottom: 8mm;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 10pt;
+    color: #6b7280;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 4mm;
+  }
 }
