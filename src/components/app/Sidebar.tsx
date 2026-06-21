@@ -78,30 +78,12 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* User */}
+      {/* Bottom controls */}
       <div className="border-t border-sidebar-border p-3">
-        <div
-          className={cn(
-            "flex items-center gap-3 rounded-lg p-2",
-            !collapsed && "bg-sidebar-accent/40",
-          )}
-        >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[image:var(--gradient-brand)] text-sm font-semibold text-white">
-            A
-          </div>
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">Analyst</div>
-              <div className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary-glow">
-                Pro Plan
-              </div>
-            </div>
-          )}
-        </div>
         <button
           onClick={toggle}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-sidebar-border bg-transparent py-1.5 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+          className="mt-0 flex w-full items-center justify-center gap-2 rounded-lg border border-sidebar-border bg-transparent py-1.5 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
         >
           {collapsed ? <ChevronsRight className="h-4 w-4" /> : (
             <>

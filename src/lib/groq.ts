@@ -99,9 +99,21 @@ export async function callGroq(turns: ChatTurn[], extraSystem?: string): Promise
   const apiKey = getGroqApiKey();
   if (!apiKey) throw new Error("No Groq API key. Open Settings to add one.");
 
-  const { groqModel, language } = useSettings.getState();
-  const base = language === "hi" ? SYSTEM_PROMPT_HI : SYSTEM_PROMPT_EN;
-  const system = extraSystem ? `${base}\n\n${extraSystem}` : base;
+  const { groqModel } = useSettings.getState();
+  // Read language preference from localStorage per project requirement; default to English
+  let lang: "en" | "hi" = "en";
+  if (typeof window !== "undefined") {
+    const stored = localStorage.getItem("bizlens_language");
+    if (stored && stored.toLowerCase().startsWith("hi")) lang = "hi";
+  }
+  const base = lang === "hi" ? SYSTEM_PROMPT_HI : SYSTEM_PROMPT_EN;
+  const HINDI_INSTRUCTION =
+    "Respond in Hindi language using Devanagari script. Keep numbers, file names, and technical terms in English.";
+  const system = (() => {
+    const s = base;
+    const withExtra = extraSystem ? `${s}\n\n${extraSystem}` : s;
+    return lang === "hi" ? `${withExtra}\n\n${HINDI_INSTRUCTION}` : withExtra;
+  })();
 
   const res = await groqRequest(apiKey, groqModel, buildMessages(system, turns), 1500);
   if (!res.ok) {

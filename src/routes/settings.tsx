@@ -213,6 +213,22 @@ function CloudinarySection() {
 
 function PreferencesSection() {
   const { appName, defaultChartType, language, set } = useSettings();
+  // prefer localStorage setting for language UI, default to English
+  const stored = typeof window !== "undefined" ? (localStorage.getItem("bizlens_language") ?? "English") : "English";
+  const activeLang = stored.toLowerCase().startsWith("hi") ? "hi" : "en";
+
+  function onLangSelect(lang: "en" | "hi") {
+    set({ language: lang });
+    if (typeof window !== "undefined") {
+      localStorage.setItem("bizlens_language", lang === "hi" ? "Hindi" : "English");
+    }
+  }
+
+  // ensure default exists
+  if (typeof window !== "undefined" && !localStorage.getItem("bizlens_language")) {
+    localStorage.setItem("bizlens_language", "English");
+  }
+
   return (
     <SectionCard icon={<Palette className="h-4 w-4 text-white" />} title="App Preferences" subtitle="Branding and defaults">
       <div className="grid gap-4 md:grid-cols-3">
@@ -232,10 +248,10 @@ function PreferencesSection() {
             {(["en", "hi"] as const).map((lang) => (
               <button
                 key={lang}
-                onClick={() => set({ language: lang })}
+                onClick={() => onLangSelect(lang)}
                 className={cn(
                   "inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  language === lang ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                  activeLang === lang ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground border border-border bg-transparent",
                 )}
               >
                 {lang === "en" ? <Globe className="h-3 w-3" /> : <Languages className="h-3 w-3" />}
