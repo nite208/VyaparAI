@@ -126,12 +126,14 @@ function AISection() {
 
 function DatabaseSection() {
   const { neonConnectionString, set } = useSettings();
+  const envConn = import.meta.env.VITE_NEON_DATABASE_URL ?? "";
   const [busy, setBusy] = useState(false);
 
   async function onTest() {
-    if (!neonConnectionString) return toast.error("Add a connection string first");
+    const conn = neonConnectionString || envConn;
+    if (!conn) return toast.error("Add a connection string first");
     setBusy(true);
-    const r = await testNeonConnection(neonConnectionString);
+    const r = await testNeonConnection(conn);
     if (r.ok) {
       await initSchema();
       toast.success("Connected — schema ready");
@@ -149,7 +151,7 @@ function DatabaseSection() {
             type="password"
             value={neonConnectionString}
             onChange={(e) => set({ neonConnectionString: e.target.value })}
-            placeholder="postgresql://user:pass@ep-xyz.neon.tech/db?sslmode=require"
+            placeholder={envConn ? "Loaded from VITE_NEON_DATABASE_URL" : "postgresql://user:pass@ep-xyz.neon.tech/db?sslmode=require"}
             className={cn(inputCls, "font-mono")}
           />
           <button onClick={onTest} disabled={busy} className={testBtnCls}>
@@ -157,6 +159,11 @@ function DatabaseSection() {
           </button>
         </div>
       </Field>
+      {envConn && !neonConnectionString && (
+        <p className="text-xs text-muted-foreground">
+          Using connection string from <span className="font-mono">VITE_NEON_DATABASE_URL</span> environment variable.
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
         Tables are auto-created on first successful test: files, insights, messages, reports, stats.
       </p>
@@ -168,6 +175,8 @@ function DatabaseSection() {
 
 function CloudinarySection() {
   const { cloudinaryCloudName, cloudinaryUploadPreset, set } = useSettings();
+  const envCloud = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME ?? "";
+  const envPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET ?? "";
   return (
     <SectionCard icon={<ImagePlus className="h-4 w-4 text-white" />} title="Cloudinary Configuration" subtitle="Unsigned uploads for file storage">
       <div className="grid gap-4 md:grid-cols-2">
@@ -175,7 +184,7 @@ function CloudinarySection() {
           <input
             value={cloudinaryCloudName}
             onChange={(e) => set({ cloudinaryCloudName: e.target.value })}
-            placeholder="your-cloud-name"
+            placeholder={envCloud ? "Loaded from VITE_CLOUDINARY_CLOUD_NAME" : "your-cloud-name"}
             className={inputCls}
           />
         </Field>
@@ -183,11 +192,16 @@ function CloudinarySection() {
           <input
             value={cloudinaryUploadPreset}
             onChange={(e) => set({ cloudinaryUploadPreset: e.target.value })}
-            placeholder="unsigned_preset"
+            placeholder={envPreset ? "Loaded from VITE_CLOUDINARY_UPLOAD_PRESET" : "unsigned_preset"}
             className={inputCls}
           />
         </Field>
       </div>
+      {(envCloud || envPreset) && !cloudinaryCloudName && !cloudinaryUploadPreset && (
+        <p className="text-xs text-muted-foreground">
+          Using Cloudinary settings from <span className="font-mono">VITE_CLOUDINARY_CLOUD_NAME</span> and <span className="font-mono">VITE_CLOUDINARY_UPLOAD_PRESET</span> environment variables.
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
         Create an <span className="font-semibold">unsigned</span> preset in Cloudinary → Settings → Upload. We only store the returned URL.
       </p>
