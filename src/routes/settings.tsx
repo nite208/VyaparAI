@@ -60,12 +60,11 @@ function SettingsPage() {
 
 function AISection() {
   const { groqApiKey, groqModel, set } = useSettings();
-  const envKey = import.meta.env.VITE_GROQ_API_KEY ?? "";
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function onTest() {
-    const key = groqApiKey || envKey;
+    const key = groqApiKey;
     if (!key) {
       toast.error("Add a key first");
       return;
@@ -86,7 +85,7 @@ function AISection() {
               type={show ? "text" : "password"}
               value={groqApiKey}
               onChange={(e) => set({ groqApiKey: e.target.value })}
-              placeholder={envKey ? "Loaded from VITE_GROQ_API_KEY" : "gsk_…"}
+              placeholder={"gsk_…"}
               className="w-full rounded-lg border border-border bg-surface px-9 py-2 text-sm font-mono outline-none focus:border-primary"
             />
             <button
@@ -113,11 +112,7 @@ function AISection() {
           <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
         </select>
       </Field>
-      {envKey && !groqApiKey && (
-        <p className="text-xs text-muted-foreground">
-          Using API key from <span className="font-mono">VITE_GROQ_API_KEY</span> environment variable.
-        </p>
-      )}
+      {/* No build-time VITE_GROQ_API_KEY fallback — keys must be provided via Settings. */}
     </SectionCard>
   );
 }
@@ -126,11 +121,10 @@ function AISection() {
 
 function DatabaseSection() {
   const { neonConnectionString, set } = useSettings();
-  const envConn = import.meta.env.VITE_NEON_DATABASE_URL ?? "";
   const [busy, setBusy] = useState(false);
 
   async function onTest() {
-    const conn = neonConnectionString || envConn;
+    const conn = neonConnectionString;
     if (!conn) return toast.error("Add a connection string first");
     setBusy(true);
     const r = await testNeonConnection(conn);
@@ -151,7 +145,7 @@ function DatabaseSection() {
             type="password"
             value={neonConnectionString}
             onChange={(e) => set({ neonConnectionString: e.target.value })}
-            placeholder={envConn ? "Loaded from VITE_NEON_DATABASE_URL" : "postgresql://user:pass@ep-xyz.neon.tech/db?sslmode=require"}
+            placeholder={"postgresql://user:pass@ep-xyz.neon.tech/db?sslmode=require"}
             className={cn(inputCls, "font-mono")}
           />
           <button onClick={onTest} disabled={busy} className={testBtnCls}>
@@ -159,11 +153,7 @@ function DatabaseSection() {
           </button>
         </div>
       </Field>
-      {envConn && !neonConnectionString && (
-        <p className="text-xs text-muted-foreground">
-          Using connection string from <span className="font-mono">VITE_NEON_DATABASE_URL</span> environment variable.
-        </p>
-      )}
+      {/* No build-time VITE_NEON_DATABASE_URL fallback — provide connection string via Settings or server-only env. */}
       <p className="text-xs text-muted-foreground">
         Tables are auto-created on first successful test: files, insights, messages, reports, stats.
       </p>

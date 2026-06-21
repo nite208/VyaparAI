@@ -3,7 +3,7 @@ import { useSettings } from "./settings";
 import type { UploadedFile, Insight, ChatMessage, Report } from "./store";
 
 export function getSql() {
-  const conn = useSettings.getState().neonConnectionString || import.meta.env.VITE_NEON_DATABASE_URL || null;
+  const conn = useSettings.getState().neonConnectionString || null;
   if (!conn) return null;
   try {
     return neon(conn);

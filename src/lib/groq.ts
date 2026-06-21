@@ -52,7 +52,7 @@ const DEFAULT_MODEL = "llama-3.3-70b-versatile";
 
 export function getGroqApiKey(): string {
   const { groqApiKey } = useSettings.getState();
-  return groqApiKey || import.meta.env.VITE_GROQ_API_KEY || "";
+  return groqApiKey || "";
 }
 
 export function hasGroqKey(): boolean {
